@@ -1,0 +1,56 @@
+{
+  "aws_ec2": {
+    "application_names": [
+      "KAW-ACC-00N-TSX-JARQA",
+      "FINOPS-APP-001",
+      "OPS-APP-100"
+    ],
+    "environments": [
+      "DEV",
+      "QA",
+      "PROD"
+    ],
+    "regions": [
+      "us-east-1",
+      "us-east-2",
+      "eu-west-1",
+      "ap-south-1"
+    ],
+    "availability_zones_by_region": {
+      "us-east-1": ["us-east-1a", "us-east-1b", "us-east-1c"],
+      "us-east-2": ["us-east-2a", "us-east-2b"],
+      "eu-west-1": ["eu-west-1a", "eu-west-1b"],
+      "ap-south-1": ["ap-south-1a", "ap-south-1b"]
+    },
+    "instance_types": [
+      "t3.small",
+      "t3.medium",
+      "m5.large",
+      "m5.xlarge",
+      "c5.large"
+    ],
+    "amis_by_region": {
+      "us-east-1": [
+        "ami-ubuntu-2204-use1",
+        "ami-amazonlinux2-use1"
+      ],
+      "us-east-2": [
+        "ami-ubuntu-2204-use2",
+        "ami-amazonlinux2-use2"
+      ],
+      "eu-west-1": [
+        "ami-ubuntu-2204-euw1",
+        "ami-amazonlinux2-euw1"
+      ],
+      "ap-south-1": [
+        "ami-ubuntu-2204-aps1",
+        "ami-amazonlinux2-aps1"
+      ]
+    },
+    "compute_types": [
+      "general-purpose",
+      "memory-optimized",
+      "compute-optimized"
+    ]
+  }
+}
