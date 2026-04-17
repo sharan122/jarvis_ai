@@ -18,8 +18,8 @@ from agent.nodes.interpret import interpret_input
 from agent.nodes.post_action import post_action
 from agent.nodes.validate_and_store import validate_and_store
 from agent.state import Agent2State
-
-
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.memory import MemorySaver
 # ── Conditional router (pure function, no LLM) ──
 
 def route_action(state: Agent2State) -> str:
@@ -97,10 +97,10 @@ def build_graph(checkpointer=None):
 def get_default_app():
     """Build the graph with an in-memory checkpointer (demo / testing)."""
     try:
-        from langgraph.checkpoint.memory import InMemorySaver
+       
         checkpointer = InMemorySaver()
     except ImportError:
-        from langgraph.checkpoint.memory import MemorySaver
+       
         checkpointer = MemorySaver()
 
     return build_graph(checkpointer=checkpointer)

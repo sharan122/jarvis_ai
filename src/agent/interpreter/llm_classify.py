@@ -13,37 +13,11 @@ import os
 from typing import Any
 
 from agent.interpreter.prompts import CLASSIFY_PROMPT
+from agent.interpreter.typo_hints import get_typo_hints
 from agent.tracing import get_callback_handler, get_langfuse_prompt
-
-
-# ── Cached model instance (created once per process) ──
-_llm_instance = None
-
-
-def _get_llm():
-    """Lazy-init the ChatOpenAI model so import doesn't fail without the key."""
-    global _llm_instance
-    if _llm_instance is not None:
-        return _llm_instance
-
-    from langchain_openai import AzureChatOpenAI
-
-    model_name = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
-    base_url = os.environ.get("OPENAI_API_BASE")
-
-
-    _llm_instance = AzureChatOpenAI(
-            openai_api_type="azure",
-            openai_api_key=os.environ.get("OPENAI_API_KEY") ,
-            azure_endpoint=os.environ.get("OPENAI_API_BASE"),
-            openai_api_version=os.environ.get("OPENAI_API_VERSION"),
-            azure_deployment=os.environ.get("CHAT_DEPLOYMENT"),
-            temperature=0.1
-        )
-
-    return _llm_instance
-
-
+from agent.llm.provider import get_llm as _get_llm
+from langchain_core.prompts import ChatPromptTemplate
+import re
 def _build_chain(lf_prompt=None):
     """
     Build a prompt | llm chain for classification.
@@ -56,7 +30,7 @@ def _build_chain(lf_prompt=None):
 
     if lf_prompt is not None:
         try:
-            from langchain_core.prompts import ChatPromptTemplate
+            
 
             lc_raw = lf_prompt.get_langchain_prompt()
 
@@ -128,7 +102,7 @@ def _fallback_heuristic(
         return {"action": "help", "field": None}
 
     # Detect edit-like phrasing
-    import re
+    
     edit_match = re.match(
         r"(?:change|update|edit)\s+([\w_]+)(?:\s+to\s+(.+))?",
         raw_lower,
@@ -180,6 +154,7 @@ def llm_classify_input(
 
     invoke_vars = {
         "current_field": current_field,
+        "field_type": field_meta.get("type", "text"),
         "prompt": field_meta.get("prompt", current_field),
         "options": json.dumps(options),
         "completed_fields": json.dumps(completed_fields),
@@ -197,6 +172,18 @@ def llm_classify_input(
 
     try:
         chain = _build_chain(lf_prompt)
+
+        # ── Inject typo hints only at LLM invocation time ──
+        hints = get_typo_hints(current_field, raw_input)
+        if hints:
+            hints_lines = "\n".join(f'  "{wrong}" -> "{correct}"' for wrong, correct in hints.items())
+            invoke_vars["typo_hints_block"] = (
+                f"\nCommon typos/aliases for this field (wrong -> correct):\n{hints_lines}\n"
+                "Use these to correct the user's input before classifying.\n"
+            )
+        else:
+            invoke_vars["typo_hints_block"] = ""
+
         result = chain.invoke(invoke_vars, **invoke_config)
 
         text = result.content.strip()
