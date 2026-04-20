@@ -21,24 +21,40 @@ _llm_instance = None
 
 
 def _get_llm():
-    """Lazy-init the ChatOpenAI model so import doesn't fail without the key."""
+    """
+    Lazy-init the LLM client.
+
+    Reads LLM_PROVIDER from the environment:
+      - "openai"  → standard ChatOpenAI using DEV_OPENAI_API_KEY
+      - anything else (default) → AzureChatOpenAI using the Azure credentials
+    """
     global _llm_instance
     if _llm_instance is not None:
         return _llm_instance
 
-    from langchain_openai import AzureChatOpenAI
+    provider = os.environ.get("LLM_PROVIDER", "azure").lower()
 
-    model_name = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
-    base_url = os.environ.get("OPENAI_API_BASE")
+    if provider == "openai":
+        from langchain_openai import ChatOpenAI
 
+        _llm_instance = ChatOpenAI(
+            api_key=os.environ.get("DEV_OPENAI_API_KEY"),
+            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+            temperature=0.1,
+            # Explicitly override base_url so OPENAI_API_BASE (which points
+            # to the Azure/Kenvue gateway) is not inherited by this client.
+            base_url="https://api.openai.com/v1",
+        )
+    else:
+        from langchain_openai import AzureChatOpenAI
 
-    _llm_instance = AzureChatOpenAI(
+        _llm_instance = AzureChatOpenAI(
             openai_api_type="azure",
-            openai_api_key=os.environ.get("OPENAI_API_KEY") ,
+            openai_api_key=os.environ.get("OPENAI_API_KEY"),
             azure_endpoint=os.environ.get("OPENAI_API_BASE"),
             openai_api_version=os.environ.get("OPENAI_API_VERSION"),
             azure_deployment=os.environ.get("CHAT_DEPLOYMENT"),
-            temperature=0.1
+            temperature=0.1,
         )
 
     return _llm_instance
@@ -171,7 +187,12 @@ def llm_classify_input(
     If OPENAI_API_KEY is not set, falls back to a heuristic so the
     demo works without burning tokens.
     """
-    api_key = os.environ.get("OPENAI_API_KEY", "")
+    provider = os.environ.get("LLM_PROVIDER", "azure").lower()
+    if provider == "openai":
+        api_key = os.environ.get("DEV_OPENAI_API_KEY", "")
+    else:
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+
     if not api_key or api_key.startswith("sk-your"):
         return _fallback_heuristic(raw_input, options, completed_fields)
 

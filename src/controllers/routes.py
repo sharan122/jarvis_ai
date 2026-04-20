@@ -43,6 +43,18 @@ def _make_config(thread_id: str, handler=None) -> dict:
     return config
 
 
+def _session_exists(session_id: str) -> bool:
+    """Return True if the checkpointer has a stored checkpoint for this session."""
+    try:
+        app = _get_app()
+        config = {"configurable": {"thread_id": session_id}}
+        snapshot = app.get_state(config)
+        # snapshot.values is empty dict when no checkpoint exists
+        return bool(snapshot and snapshot.values)
+    except Exception:
+        return False
+
+
 # ── Endpoints ──
 
 @router.post("/start", response_model=SessionResponse)
@@ -91,6 +103,12 @@ def start_session(req: StartRequest):
 def resume_session(req: ResumeRequest):
     app = _get_app()
 
+    if not _session_exists(req.session_id):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session '{req.session_id}' not found. It may have expired or the server was restarted before this fix. Please start a new session.",
+        )
+
     # ── Reuse the existing session's Langfuse handler ──
     handler = get_callback_handler(req.session_id)
     config = _make_config(req.session_id, handler)
@@ -138,6 +156,13 @@ def edit_field(req: EditRequest):
     recognises via the fast path.
     """
     app = _get_app()
+
+    if not _session_exists(req.session_id):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session '{req.session_id}' not found. It may have expired or the server was restarted before this fix. Please start a new session.",
+        )
+
     handler = get_callback_handler(req.session_id)
     config = _make_config(req.session_id, handler)
 

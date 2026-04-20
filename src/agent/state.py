@@ -43,6 +43,9 @@ class Agent2State(TypedDict, total=False):
     help_context: str | None
     help_response: str | None
 
+    # ── Preview state ──
+    preview_response: dict | None
+
     # ── Output ──
     agent_json: dict[str, Any] | None
     final_json: dict[str, Any] | None

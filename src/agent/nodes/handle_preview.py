@@ -23,8 +23,8 @@ def handle_preview(state: Agent2State) -> dict:
 
     return {
         "mode": "collect",
+        "preview_response": preview,
         "messages": [
-            f"Preview: {len(completed)} done, {len(missing)} remaining. "
-            f"Data: {preview}"
+            f"Preview: {len(completed)} done, {len(missing)} remaining."
         ],
     }

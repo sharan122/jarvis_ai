@@ -19,6 +19,7 @@ def ask_field(state: Agent2State) -> dict:
     options = get_options_for_field(
         service_id, field, state["field_config"], state["values"]
     )
+    preview_response = state.get("preview_response")
 
     # Build self-contained interrupt payload for the frontend
     payload: dict = {
@@ -54,6 +55,9 @@ def ask_field(state: Agent2State) -> dict:
 
     if help_response:
         payload["help_response"] = help_response
+        
+    if preview_response:
+        payload["preview"] = preview_response
 
     # ── PAUSE — graph stops here until Command(resume=...) ──
     user_answer = interrupt(payload)
@@ -63,6 +67,7 @@ def ask_field(state: Agent2State) -> dict:
         "last_user_input": user_answer,
         "error": None,
         "help_response": None,
+        "preview_response": None,
         "turn_count": turn,
         "messages": [f"[turn {turn}] User input for {field}: {user_answer}"],
     }

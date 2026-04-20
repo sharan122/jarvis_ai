@@ -18,7 +18,11 @@ from agent.nodes.interpret import interpret_input
 from agent.nodes.post_action import post_action
 from agent.nodes.validate_and_store import validate_and_store
 from agent.state import Agent2State
-
+from pathlib import Path
+import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.memory import MemorySaver
 
 # ── Conditional router (pure function, no LLM) ──
 
@@ -95,12 +99,37 @@ def build_graph(checkpointer=None):
 
 
 def get_default_app():
-    """Build the graph with an in-memory checkpointer (demo / testing)."""
+    """
+    Build the graph with a persistent SQLite checkpointer.
+
+    Sessions are stored in checkpoints.db (project root) so they survive
+    server restarts.  Falls back to InMemorySaver only if the sqlite
+    package is not installed.
+    """
+
     try:
-        from langgraph.checkpoint.memory import InMemorySaver
-        checkpointer = InMemorySaver()
-    except ImportError:
-        from langgraph.checkpoint.memory import MemorySaver
-        checkpointer = MemorySaver()
+
+
+        # Resolve to project root  (src/agent/graph.py → ../../..)
+        db_path = Path(__file__).resolve().parent.parent.parent / "checkpoints.db"
+
+        # Keep the connection open for the lifetime of the process.
+        # check_same_thread=False is required because FastAPI may invoke the
+        # graph from multiple worker threads.
+        # isolation_level=None enables autocommit so writes are immediately
+        # flushed to disk without requiring explicit conn.commit() calls.
+        conn = sqlite3.connect(
+            str(db_path),
+            check_same_thread=False,
+            isolation_level=None,
+        )
+        checkpointer = SqliteSaver(conn)
+    except Exception:
+        # Fallback — no persistence across restarts
+        try:
+            
+            checkpointer = InMemorySaver()
+        except ImportError:
+            checkpointer = MemorySaver()
 
     return build_graph(checkpointer=checkpointer)
