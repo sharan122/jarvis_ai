@@ -28,8 +28,19 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 from controllers.routes import router
+from fastapi.middleware.cors import CORSMiddleware
+
 initialize_langfuse()
 app = FastAPI()
+
+# Add CORS Middleware to allow requests from frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.add_middleware(LogMiddleware)
 PrometheusFastApiInstrumentator().instrument(app).expose(app, endpoint="/observability/metrics")
