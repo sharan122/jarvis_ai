@@ -13,6 +13,7 @@ import os
 from typing import Any
 
 from agent.interpreter.prompts import CLASSIFY_PROMPT
+from agent.interpreter.typo_hints import get_typo_hints
 from agent.tracing import get_callback_handler, get_langfuse_prompt
 
 
@@ -72,7 +73,7 @@ def _build_chain(lf_prompt=None):
 
     if lf_prompt is not None:
         try:
-            from langchain_core.prompts import ChatPromptTemplate
+            
 
             lc_raw = lf_prompt.get_langchain_prompt()
 
@@ -144,7 +145,7 @@ def _fallback_heuristic(
         return {"action": "help", "field": None}
 
     # Detect edit-like phrasing
-    import re
+    
     edit_match = re.match(
         r"(?:change|update|edit)\s+([\w_]+)(?:\s+to\s+(.+))?",
         raw_lower,
@@ -201,6 +202,7 @@ def llm_classify_input(
 
     invoke_vars = {
         "current_field": current_field,
+        "field_type": field_meta.get("type", "text"),
         "prompt": field_meta.get("prompt", current_field),
         "options": json.dumps(options),
         "completed_fields": json.dumps(completed_fields),
@@ -218,6 +220,18 @@ def llm_classify_input(
 
     try:
         chain = _build_chain(lf_prompt)
+
+        # ── Inject typo hints only at LLM invocation time ──
+        hints = get_typo_hints(current_field, raw_input)
+        if hints:
+            hints_lines = "\n".join(f'  "{wrong}" -> "{correct}"' for wrong, correct in hints.items())
+            invoke_vars["typo_hints_block"] = (
+                f"\nCommon typos/aliases for this field (wrong -> correct):\n{hints_lines}\n"
+                "Use these to correct the user's input before classifying.\n"
+            )
+        else:
+            invoke_vars["typo_hints_block"] = ""
+
         result = chain.invoke(invoke_vars, **invoke_config)
 
         text = result.content.strip()

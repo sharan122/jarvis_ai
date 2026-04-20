@@ -36,16 +36,21 @@ You must return valid JSON with one of these action types:
 Rules:
 - For "answer", the value MUST be one of the valid options if options are provided.
   Map informal language to the closest option (e.g., "Ohio" → "us-east-2").
+- For number fields like disk_size_gb (no options list): ALWAYS return a plain integer string.
+  Convert any text the user enters — number words, units, keywords — into a digit (e.g., "twenty GB" → "20", "hundred" → "100", "min" → "20", "max" → "500", "50 gigabytes" → "50").
+  Valid disk sizes are between 20 and 500 GB (inclusive). Use the typo hints block for guidance.
+  If the number is out of range, return action "unclear" with a message explaining valid range.
 - For "edit", the field must be one of the already-completed fields.
 - Return ONLY the JSON object. No explanation. No markdown fences."""
 
 USER_TEMPLATE = """\
 Current field: "{current_field}"
+Field type: {field_type}
 Field description: "{prompt}"
 Valid options: {options}
 Already completed fields: {completed_fields}
 Current values: {values}
-
+{typo_hints_block}
 User said: "{user_input}"
 
 Classify this input. Return JSON only."""

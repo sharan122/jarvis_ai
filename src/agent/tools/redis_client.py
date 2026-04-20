@@ -6,7 +6,7 @@ Set REDIS_URL env var to connect to a real Redis instance.
 """
 
 from __future__ import annotations
-
+import redis as redis_lib
 import json
 import os
 from typing import Any
@@ -48,7 +48,7 @@ class RedisClient:
     def __init__(self):
         redis_url = os.environ.get("REDIS_URL")
         if redis_url:
-            import redis as redis_lib
+            
             self._client = redis_lib.Redis.from_url(redis_url, decode_responses=True)
         else:
             self._client = FakeRedis()

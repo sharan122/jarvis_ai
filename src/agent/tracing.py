@@ -20,7 +20,9 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any
-
+import langfuse
+from langfuse import Langfuse
+from langfuse.langchain import CallbackHandler
 logger = logging.getLogger(__name__)
 
 # ── Singleton Langfuse client (init once) ──
@@ -55,7 +57,6 @@ def initialize_langfuse() -> bool:
         return False
 
     try:
-        from langfuse import Langfuse
 
         _langfuse_client = Langfuse(
             public_key=public_key,
@@ -100,8 +101,7 @@ def create_callback_handler(session_id: str, user_id: str, service_id: str):
     public_key = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
 
     try:
-        import langfuse
-        from langfuse.langchain import CallbackHandler
+
 
         # Store session metadata for use on subsequent requests
         _session_meta[session_id] = {"user_id": user_id, "service_id": service_id}
@@ -145,7 +145,6 @@ def get_callback_handler(session_id: str | None):
     meta = _session_meta.get(session_id)
     if meta:
         try:
-            import langfuse
             public_key = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
             langfuse.propagate_attributes(
                 session_id=session_id,
