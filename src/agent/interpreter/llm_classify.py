@@ -2,101 +2,90 @@
 LLM-based input classifier — slow path.
 
 Called only when the fast path cannot resolve the user's input.
-Uses OpenAI GPT via langchain-openai.
-Falls back to a heuristic if OPENAI_API_KEY is not set.
+Uses the LLM configured by provider.py (Azure OpenAI or standard OpenAI).
+The prompt is fetched from Langfuse Prompt Management via PromptService;
+if Langfuse is unreachable the local fallback in prompts.py is used instead.
+Falls back to a heuristic classifier when no API key is available.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
 from typing import Any
+
+from langchain_core.prompts import ChatPromptTemplate
 
 from agent.interpreter.prompts import CLASSIFY_PROMPT
 from agent.interpreter.typo_hints import get_typo_hints
-from agent.tracing import get_callback_handler, get_langfuse_prompt
+from agent.llm.provider import get_llm
+from agent.prompt_service import prompt_service
+from agent.tracing import get_callback_handler
+
+logger = logging.getLogger(__name__)
 
 
-# ── Cached model instance (created once per process) ──
-_llm_instance = None
-
-
-def _get_llm():
-    """
-    Lazy-init the LLM client.
-
-    Reads LLM_PROVIDER from the environment:
-      - "openai"  → standard ChatOpenAI using DEV_OPENAI_API_KEY
-      - anything else (default) → AzureChatOpenAI using the Azure credentials
-    """
-    global _llm_instance
-    if _llm_instance is not None:
-        return _llm_instance
-
-    provider = os.environ.get("LLM_PROVIDER", "azure").lower()
-
-    if provider == "openai":
-        from langchain_openai import ChatOpenAI
-
-        _llm_instance = ChatOpenAI(
-            api_key=os.environ.get("DEV_OPENAI_API_KEY"),
-            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-            temperature=0.1,
-            # Explicitly override base_url so OPENAI_API_BASE (which points
-            # to the Azure/Kenvue gateway) is not inherited by this client.
-            base_url="https://api.openai.com/v1",
-        )
-    else:
-        from langchain_openai import AzureChatOpenAI
-
-        _llm_instance = AzureChatOpenAI(
-            openai_api_type="azure",
-            openai_api_key=os.environ.get("OPENAI_API_KEY"),
-            azure_endpoint=os.environ.get("OPENAI_API_BASE"),
-            openai_api_version=os.environ.get("OPENAI_API_VERSION"),
-            azure_deployment=os.environ.get("CHAT_DEPLOYMENT"),
-            temperature=0.1,
-        )
-
-    return _llm_instance
-
+# ── Chain builder ─────────────────────────────────────────────────────────────
 
 def _build_chain(lf_prompt=None):
     """
-    Build a prompt | llm chain for classification.
+    Return a prompt | LLM chain, preferring the Langfuse-managed prompt.
 
-    If a Langfuse prompt object is supplied, compile it into a LangChain
-    ChatPromptTemplate so the chain stays identical but prompt versions
-    are tracked in Langfuse Prompt Management.
+    If *lf_prompt* is supplied it is compiled into a LangChain
+    ChatPromptTemplate so that the Langfuse trace records the exact prompt
+    version used.  The ``langfuse_prompt`` is attached to the template via
+    ``.with_config(metadata=...)`` — the SDK-documented way to link generations
+    to a specific prompt version for ALL labels (not just 'production').
+    Falls back to the local CLASSIFY_PROMPT constant.
     """
-    llm = _get_llm()
+    llm = get_llm()
 
     if lf_prompt is not None:
         try:
-            
-
             lc_raw = lf_prompt.get_langchain_prompt()
 
-            # Langfuse v4 returns a list of (role, content) tuples — 
-            # exactly the format ChatPromptTemplate.from_messages() expects
             if isinstance(lc_raw, list):
+                # Chat prompt — expected type; preserves system + human structure.
                 lc_prompt = ChatPromptTemplate.from_messages(lc_raw)
+            elif isinstance(lc_raw, str):
+                # Text prompt — Chat type is preferred; wrap as system message.
+                logger.warning(
+                    "[llm_classify] Prompt '%s' is Text type; Chat type is preferred. "
+                    "Wrapping as system message.",
+                    getattr(lf_prompt, "name", "?"),
+                )
+                lc_prompt = ChatPromptTemplate.from_messages([("system", lc_raw)])
             else:
-                lc_prompt = lc_raw  # already a ChatPromptTemplate
+                lc_prompt = lc_raw
+
+            # Attach langfuse_prompt to the TEMPLATE (not only the invoke config).
+            # This is the correct Langfuse-documented method for linking a
+            # generation to a prompt version — works with any label, not just
+            # 'production'.
+            lc_prompt = lc_prompt.with_config(
+                {"metadata": {"langfuse_prompt": lf_prompt}}
+            )
 
             return lc_prompt | llm
-        except Exception:
-            pass  # Fall back to local prompt below
+
+        except Exception as exc:
+            logger.warning(
+                "[llm_classify] Langfuse prompt unusable (%s); using local fallback.", exc
+            )
 
     return CLASSIFY_PROMPT | llm
 
+
+# ── Output validation ─────────────────────────────────────────────────────────
 
 def _validate_llm_output(
     output: dict,
     options: list[str],
     completed_fields: list[str],
 ) -> dict:
-    """Sanitise / reject bad LLM output."""
+    """Reject structurally invalid LLM responses and normalise edge cases."""
     action = output.get("action")
     valid_actions = {"answer", "help", "edit", "preview", "cancel", "unclear"}
 
@@ -117,35 +106,33 @@ def _validate_llm_output(
     return output
 
 
+# ── Heuristic fallback ────────────────────────────────────────────────────────
+
 def _fallback_heuristic(
     raw_input: str,
     options: list[str],
     completed_fields: list[str] | None = None,
 ) -> dict:
     """
-    Cheap heuristic used when no LLM API key is available.
-    Covers basic fuzzy matching so the demo still works without tokens.
+    Simple rule-based classifier used when no LLM API key is available.
+
+    Covers basic fuzzy matching so the bot still works in dev without tokens.
     """
     raw_lower = raw_input.strip().lower()
     completed_fields = completed_fields or []
 
-    # Try fuzzy startswith
     for opt in options:
         if opt.lower().startswith(raw_lower):
             return {"action": "answer", "value": opt}
 
-    # Try option contained in input
     for opt in options:
         if opt.lower() in raw_lower:
             return {"action": "answer", "value": opt}
 
-    # Detect help-like phrasing
     help_signals = ["what is", "what does", "explain", "tell me about", "meaning"]
     if any(s in raw_lower for s in help_signals):
         return {"action": "help", "field": None}
 
-    # Detect edit-like phrasing
-    
     edit_match = re.match(
         r"(?:change|update|edit)\s+([\w_]+)(?:\s+to\s+(.+))?",
         raw_lower,
@@ -153,16 +140,17 @@ def _fallback_heuristic(
     if edit_match:
         target = edit_match.group(1)
         new_val = edit_match.group(2).strip() if edit_match.group(2) else None
-        matched_field = None
-        for cf in completed_fields:
-            if cf.lower() == target:
-                matched_field = cf
-                break
-        if not matched_field:
-            for cf in completed_fields:
-                if target in cf.lower() or target.replace("_", "") in cf.lower().replace("_", ""):
-                    matched_field = cf
-                    break
+        matched_field = next(
+            (cf for cf in completed_fields if cf.lower() == target),
+            next(
+                (
+                    cf for cf in completed_fields
+                    if target in cf.lower()
+                    or target.replace("_", "") in cf.lower().replace("_", "")
+                ),
+                None,
+            ),
+        )
         if matched_field:
             return {"action": "edit", "field": matched_field, "value": new_val}
         return {
@@ -172,6 +160,8 @@ def _fallback_heuristic(
 
     return {"action": "unclear", "message": f"Could not understand: {raw_input}"}
 
+
+# ── Public classifier ─────────────────────────────────────────────────────────
 
 def llm_classify_input(
     raw_input: str,
@@ -183,24 +173,32 @@ def llm_classify_input(
     session_id: str | None = None,
 ) -> dict:
     """
-    Classify user input using OpenAI GPT via LangChain.
+    Classify user input using the configured LLM (Azure OpenAI or OpenAI).
 
-    If OPENAI_API_KEY is not set, falls back to a heuristic so the
-    demo works without burning tokens.
+    1. Resolves the Langfuse prompt name from CLASSIFY_INPUT_PROMPT env var.
+    2. Fetches that prompt from Langfuse via PromptService (cached 60 s).
+    3. Injects typo hints at invocation time to keep the stored prompt lean.
+    4. Attaches the Langfuse CallbackHandler so every call is traced.
+    5. Falls back to a heuristic when no API key is configured.
     """
     provider = os.environ.get("LLM_PROVIDER", "azure").lower()
-    if provider == "openai":
-        api_key = os.environ.get("DEV_OPENAI_API_KEY", "")
-    else:
-        api_key = os.environ.get("OPENAI_API_KEY", "")
+    api_key = (
+        os.environ.get("DEV_OPENAI_API_KEY", "")
+        if provider == "openai"
+        else os.environ.get("OPENAI_API_KEY", "")
+    )
 
     if not api_key or api_key.startswith("sk-your"):
         return _fallback_heuristic(raw_input, options, completed_fields)
 
-    # ── Try to fetch prompt from Langfuse Prompt Management ──
-    lf_prompt = get_langfuse_prompt("classify-input")
+    # Prompt name is configured via env var — no code change needed to rename.
+    prompt_name = os.environ.get("CLASSIFY_INPUT_PROMPT", "classify-input")
+    # PromptService uses get_client() — the same global SDK singleton as the
+    # CallbackHandler — so the returned lf_prompt object is correctly linked
+    # to the active trace for ANY label (not just "production").
+    lf_prompt = prompt_service.get_prompt(prompt_name)
 
-    invoke_vars = {
+    invoke_vars: dict = {
         "current_field": current_field,
         "field_type": field_meta.get("type", "text"),
         "prompt": field_meta.get("prompt", current_field),
@@ -212,31 +210,49 @@ def llm_classify_input(
         "user_input": raw_input,
     }
 
-    # ── Pass Langfuse CallbackHandler for automatic LLM span tracing ──
+    # Typo hints are injected at call-time, not stored in the prompt template,
+    # so the Langfuse admin sees a clean, field-agnostic prompt in the UI.
+    hints = get_typo_hints(current_field, raw_input)
+    if hints:
+        hint_lines = "\n".join(
+            f'  "{wrong}" -> "{correct}"' for wrong, correct in hints.items()
+        )
+        invoke_vars["typo_hints_block"] = (
+            f"\nCommon typos/aliases for this field (wrong -> correct):\n{hint_lines}\n"
+            "Use these to correct the user's input before classifying.\n"
+        )
+    else:
+        invoke_vars["typo_hints_block"] = ""
+
     invoke_config: dict = {}
     handler = get_callback_handler(session_id)
+
+    # Build the invocation config.
+    # langfuse_prompt in metadata is the Langfuse-documented API for linking a
+    # generation to a specific prompt version when using LangChain CallbackHandler.
+    # This is what populates Prompt → Metrics and Traces → Prompt Name.
+    config_dict: dict = {}
     if handler is not None:
-        invoke_config["config"] = {"callbacks": [handler]}
+        config_dict["callbacks"] = [handler]
+    if lf_prompt is not None:
+        config_dict["metadata"] = {"langfuse_prompt": lf_prompt}
+    if config_dict:
+        invoke_config["config"] = config_dict
 
     try:
         chain = _build_chain(lf_prompt)
-
-        # ── Inject typo hints only at LLM invocation time ──
-        hints = get_typo_hints(current_field, raw_input)
-        if hints:
-            hints_lines = "\n".join(f'  "{wrong}" -> "{correct}"' for wrong, correct in hints.items())
-            invoke_vars["typo_hints_block"] = (
-                f"\nCommon typos/aliases for this field (wrong -> correct):\n{hints_lines}\n"
-                "Use these to correct the user's input before classifying.\n"
-            )
-        else:
-            invoke_vars["typo_hints_block"] = ""
-
         result = chain.invoke(invoke_vars, **invoke_config)
 
-        text = result.content.strip()
+        # Flush Langfuse spans synchronously so the trace is exported before
+        # the FastAPI response is returned. Without this, async OTel export
+        # races against the HTTP response and traces get silently dropped.
+        if handler is not None:
+            try:
+                handler.flush()
+            except Exception as flush_exc:
+                logger.debug("[llm_classify] Langfuse flush warning: %s", flush_exc)
 
-        # Strip markdown fences if the model wraps the JSON
+        text = result.content.strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 

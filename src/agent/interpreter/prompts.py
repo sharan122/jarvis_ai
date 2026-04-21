@@ -1,13 +1,23 @@
 """
-Prompt templates for the LLM interpreter.
+Hardcoded fallback prompt templates for the LLM interpreter.
 
-Uses LangChain ChatPromptTemplate so the prompt is structured,
-reusable, and compatible with any LangChain chat model.
+These strings are used ONLY when Langfuse Prompt Management is
+unreachable.  The canonical, admin-editable version of every prompt lives
+in Langfuse under the same name and label (see prompt_service.py).
+
+Langfuse prompt name : "classify-input"
+Langfuse label       : controlled by PROMPT_LABEL env var (default: "production")
+Langfuse variables   : current_field, field_type, prompt, options,
+                       completed_fields, values, typo_hints_block, user_input
 """
+
+from __future__ import annotations
 
 from langchain_core.prompts import ChatPromptTemplate
 
-SYSTEM_PROMPT = """\
+# ── System message ────────────────────────────────────────────────────────────
+
+_SYSTEM = """\
 You are a form-input interpreter for a cloud resource provisioning system.
 
 The user is filling out a form one field at a time. Your job is to classify
@@ -37,13 +47,18 @@ Rules:
 - For "answer", the value MUST be one of the valid options if options are provided.
   Map informal language to the closest option (e.g., "Ohio" → "us-east-2").
 - For number fields like disk_size_gb (no options list): ALWAYS return a plain integer string.
-  Convert any text the user enters — number words, units, keywords — into a digit (e.g., "twenty GB" → "20", "hundred" → "100", "min" → "20", "max" → "500", "50 gigabytes" → "50").
-  Valid disk sizes are between 20 and 500 GB (inclusive). Use the typo hints block for guidance.
-  If the number is out of range, return action "unclear" with a message explaining valid range.
+  Convert any text the user enters — number words, units, keywords — into a digit
+  (e.g., "twenty GB" → "20", "hundred" → "100", "min" → "20", "max" → "500",
+  "50 gigabytes" → "50"). Valid disk sizes are between 20 and 500 GB (inclusive).
+  Use the typo hints block for guidance. If the number is out of range, return
+  action "unclear" with a message explaining the valid range.
 - For "edit", the field must be one of the already-completed fields.
-- Return ONLY the JSON object. No explanation. No markdown fences."""
+- Return ONLY the JSON object. No explanation. No markdown fences.\
+"""
 
-USER_TEMPLATE = """\
+# ── Human / user message ──────────────────────────────────────────────────────
+
+_HUMAN = """\
 Current field: "{current_field}"
 Field type: {field_type}
 Field description: "{prompt}"
@@ -53,10 +68,12 @@ Current values: {values}
 {typo_hints_block}
 User said: "{user_input}"
 
-Classify this input. Return JSON only."""
+Classify this input. Return JSON only.\
+"""
 
-# ── Structured LangChain prompt ──
+# ── Assembled LangChain prompt (fallback only) ────────────────────────────────
+
 CLASSIFY_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", SYSTEM_PROMPT),
-    ("human", USER_TEMPLATE),
+    ("system", _SYSTEM),
+    ("human", _HUMAN),
 ])

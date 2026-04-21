@@ -1,18 +1,13 @@
 """
 Central Langfuse tracing module for Agent 2 — Langfuse SDK v4 compatible.
 
-Langfuse v4 still supports the LangChain CallbackHandler, but the API changed:
-  - Constructor: CallbackHandler(public_key=...) — keys come from env / Langfuse() init
-  - Session / user context: set via langfuse.propagate_attributes() context manager
-  - Token usage + cost: captured automatically when the handler is passed to chain.invoke()
+Responsible for the LangChain CallbackHandler lifecycle only.
+Prompt fetching is handled by agent.prompt_service.PromptService.
 
 Lifecycle per request:
   1. Routes call create_callback_handler(session_id, user_id, service_id).
-     → We start a propagate_attributes() context and return the CallbackHandler.
-     (The context object is stored so routes.py can exit it cleanly.)
-  2. Routes pass the handler in config={"callbacks": [handler]} to every invoke().
+  2. Routes pass the handler via config={"callbacks": [handler]} to every invoke().
   3. Routes call flush_handler(session_id) at the end of the session.
-     → We flush(), call lf.flush(), and close the propagate_attributes context.
 """
 
 from __future__ import annotations
@@ -177,18 +172,3 @@ def flush_handler(session_id: str | None) -> None:
             logger.error("[Langfuse] flush failed: %s", exc)
 
 
-# ── Prompt management ──
-
-def get_langfuse_prompt(name: str):
-    """
-    Fetch a prompt from Langfuse Prompt Management by name.
-    Returns the Langfuse prompt object, or None if unavailable.
-    """
-    lf = _get_client()
-    if lf is None:
-        return None
-    try:
-        return lf.get_prompt(name)
-    except Exception as exc:
-        logger.debug("[Langfuse] get_prompt(%s) failed: %s", name, exc)
-        return None
