@@ -35,6 +35,7 @@ def interpret_input(state: Agent2State) -> dict:
         options=options,
         completed_fields=state.get("completed_fields", []),
         values=state.get("values", {}),
+        service_id=state.get("service_id", "aws_ec2"),
     )
 
     result: dict = {

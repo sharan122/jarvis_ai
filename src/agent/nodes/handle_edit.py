@@ -80,6 +80,7 @@ def handle_edit(state: Agent2State) -> dict:
                 completed_fields=llm_completed,
                 values=state.get("values", {}),
                 session_id=state.get("session_id"),
+                service_id=state.get("service_id", "aws_ec2"),
             )
             if llm_result.get("action") == "answer":
                 normalised_value = llm_result["value"]

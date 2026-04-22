@@ -18,11 +18,6 @@ class ResumeRequest(BaseModel):
     answer: str
 
 
-class EditRequest(BaseModel):
-    session_id: str
-    field: str
-    value: str | None = None  # None = re-ask the field
-
 
 class SessionResponse(BaseModel):
     session_id: str

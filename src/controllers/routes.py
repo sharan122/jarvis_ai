@@ -9,7 +9,7 @@ from langgraph.types import Command
 
 from agent.graph import get_default_app
 from agent.tracing import create_callback_handler, flush_handler, get_callback_handler
-from models.models import EditRequest, ResumeRequest, SessionResponse, StartRequest
+from models.models import ResumeRequest, SessionResponse, StartRequest
 from redis_loader.loader import load_all as load_redis_data
 
 router = APIRouter(prefix="/api/agent2", tags=["agent2"])
@@ -103,7 +103,7 @@ def start_session(req: StartRequest):
 def resume_session(req: ResumeRequest):
     app = _get_app()
 
-    if not _session_exists(req.session_id):
+    if  not _session_exists(req.session_id):
         raise HTTPException(
             status_code=404,
             detail=f"Session '{req.session_id}' not found. It may have expired or the server was restarted before this fix. Please start a new session.",
@@ -124,7 +124,7 @@ def resume_session(req: ResumeRequest):
         return SessionResponse(
             session_id=req.session_id,
             status="collecting",
-            payload=payload,
+            payload=payload, 
         )
 
     mode = result.get("mode", "")
@@ -139,62 +139,6 @@ def resume_session(req: ResumeRequest):
 
     # Cancelled or other terminal state
     flush_handler(req.session_id)
-    return SessionResponse(
-        session_id=req.session_id,
-        status="cancelled",
-    )
-
-
-@router.post("/edit", response_model=SessionResponse)
-def edit_field(req: EditRequest):
-    """
-    Directly edit a previously filled field.
-
-    The frontend sends field name + optional new value.
-    This injects an edit action into the graph by resuming
-    with a structured edit command that the interpret node
-    recognises via the fast path.
-    """
-    app = _get_app()
-
-    if not _session_exists(req.session_id):
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session '{req.session_id}' not found. It may have expired or the server was restarted before this fix. Please start a new session.",
-        )
-
-    handler = get_callback_handler(req.session_id)
-    config = _make_config(req.session_id, handler)
-
-    if req.value:
-        answer = f"change {req.field} to {req.value}"
-    else:
-        answer = f"edit {req.field}"
-
-    try:
-        result = app.invoke(Command(resume=answer), config=config)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    payload = _extract_interrupt(result)
-
-    if payload:
-        return SessionResponse(
-            session_id=req.session_id,
-            status="collecting",
-            payload=payload,
-        )
-
-    mode = result.get("mode", "")
-    if mode == "done":
-        flush_handler(req.session_id)
-        return SessionResponse(
-            session_id=req.session_id,
-            status="done",
-            final_json=result.get("final_json"),
-            agent_json=result.get("agent_json"),
-        )
-
     return SessionResponse(
         session_id=req.session_id,
         status="cancelled",

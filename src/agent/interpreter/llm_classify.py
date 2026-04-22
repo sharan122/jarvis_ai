@@ -171,6 +171,7 @@ def llm_classify_input(
     completed_fields: list[str],
     values: dict[str, Any],
     session_id: str | None = None,
+    service_id: str = "aws_ec2",
 ) -> dict:
     """
     Classify user input using the configured LLM (Azure OpenAI or OpenAI).
@@ -212,7 +213,7 @@ def llm_classify_input(
 
     # Typo hints are injected at call-time, not stored in the prompt template,
     # so the Langfuse admin sees a clean, field-agnostic prompt in the UI.
-    hints = get_typo_hints(current_field, raw_input)
+    hints = get_typo_hints(current_field, raw_input, service_id=service_id)
     if hints:
         hint_lines = "\n".join(
             f'  "{wrong}" -> "{correct}"' for wrong, correct in hints.items()

@@ -1,0 +1,144 @@
+{
+  "service_id": "azure_vm",
+  "service_name": "Azure Virtual Machine",
+  "version": "2026-04-22",
+  "field_order": [
+    "application_name",
+    "app_id",
+    "subscription_id",
+    "environment",
+    "region",
+    "availability_zone",
+    "vm_size",
+    "image",
+    "compute_type",
+    "disk_size_gb"
+  ],
+  "fields": {
+    "application_name": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "application_names",
+      "depends_on": null,
+      "prompt": "Select application name",
+      "help": "The application this Azure VM belongs to. Determines subscription and permissions.",
+      "validator": null
+    },
+    "app_id": {
+      "type": "text",
+      "required": true,
+      "readonly": true,
+      "source": "user_enrichment",
+      "options_key": null,
+      "depends_on": null,
+      "prompt": "App ID (auto-filled)",
+      "help": "Application ID from the enterprise app registry. Auto-filled based on application name.",
+      "validator": null
+    },
+    "subscription_id": {
+      "type": "text",
+      "required": true,
+      "readonly": true,
+      "source": "user_enrichment",
+      "options_key": null,
+      "depends_on": null,
+      "prompt": "Azure Subscription ID (auto-filled)",
+      "help": "Azure subscription identifier. Auto-filled from the application/environment mapping.",
+      "validator": null
+    },
+    "environment": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "environments",
+      "depends_on": null,
+      "prompt": "Select environment",
+      "help": "Target deployment environment. DEV for development, QA for testing, PROD for production.",
+      "validator": null
+    },
+    "region": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "regions",
+      "depends_on": null,
+      "prompt": "Select Azure region",
+      "help": "Geographic Azure location where the VM will be deployed. Affects latency and data residency.",
+      "validator": null
+    },
+    "availability_zone": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "availability_zones_by_region",
+      "depends_on": "region",
+      "prompt": "Select availability zone",
+      "help": "A fault-isolated datacenter zone within the selected Azure region. Options depend on the selected region.",
+      "validator": null
+    },
+    "vm_size": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "vm_sizes",
+      "depends_on": null,
+      "prompt": "Select VM size",
+      "help": "Defines vCPUs, memory, and network capacity. Standard_B is burstable, Standard_D is general purpose, Standard_F is compute optimized.",
+      "validator": null
+    },
+    "image": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "images_by_region",
+      "depends_on": "region",
+      "prompt": "Select OS image",
+      "help": "Operating system image used to boot the VM. Ubuntu and Windows Server are common choices. Options depend on the selected region.",
+      "validator": null
+    },
+    "compute_type": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "compute_types",
+      "depends_on": null,
+      "prompt": "Select compute type",
+      "help": "Business-facing grouping: general-purpose (balanced), memory-optimized (high RAM), compute-optimized (high CPU).",
+      "validator": null
+    },
+    "disk_size_gb": {
+      "type": "number",
+      "required": true,
+      "readonly": false,
+      "source": "user_input",
+      "options_key": null,
+      "depends_on": null,
+      "prompt": "Enter OS disk size in GB",
+      "help": "Size of the OS managed disk. Minimum 32 GB, maximum 1024 GB.",
+      "validator": {
+        "min": 32,
+        "max": 1024
+      }
+    }
+  },
+  "user_enrichment": {
+    "application_name": "KAW-ACC-00N-TSX-JARQA",
+    "app_id": "APP000300003369",
+    "subscription_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+  },
+  "default_json": {
+    "service_id": "azure_vm",
+    "resource_type": "vm",
+    "owner": "jarvis-ai",
+    "request_source": "agent_2",
+    "provisioning_tool": "terraform"
+  }
+}

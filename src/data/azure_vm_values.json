@@ -1,0 +1,56 @@
+{
+  "azure_vm": {
+    "application_names": [
+      "KAW-ACC-00N-TSX-JARQA",
+      "FINOPS-APP-001",
+      "OPS-APP-100"
+    ],
+    "environments": [
+      "DEV",
+      "QA",
+      "PROD"
+    ],
+    "regions": [
+      "eastus",
+      "eastus2",
+      "westeurope",
+      "southeastasia"
+    ],
+    "availability_zones_by_region": {
+      "eastus":       ["1", "2", "3"],
+      "eastus2":      ["1", "2", "3"],
+      "westeurope":   ["1", "2", "3"],
+      "southeastasia":["1", "2"]
+    },
+    "vm_sizes": [
+      "Standard_B2s",
+      "Standard_B4ms",
+      "Standard_D4s_v5",
+      "Standard_D8s_v5",
+      "Standard_F4s_v2"
+    ],
+    "images_by_region": {
+      "eastus": [
+        "Ubuntu2204-eastus",
+        "WindowsServer2022-eastus"
+      ],
+      "eastus2": [
+        "Ubuntu2204-eastus2",
+        "WindowsServer2022-eastus2"
+      ],
+      "westeurope": [
+        "Ubuntu2204-westeurope",
+        "WindowsServer2022-westeurope"
+      ],
+      "southeastasia": [
+        "Ubuntu2204-southeastasia",
+        "WindowsServer2022-southeastasia"
+      ]
+    },
+    "compute_types": [
+      "general-purpose",
+      "memory-optimized",
+      "compute-optimized"
+    ]
+  }
+}
