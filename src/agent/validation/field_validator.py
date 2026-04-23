@@ -28,7 +28,14 @@ def validate_field(
     if field_type == "select":
         options = get_options_for_field(service_id, field, field_config, values)
         if value not in options:
-            return False, None, f"'{value}' is not valid for {field}. Options: {options}"
+            field_label = meta.get("prompt", field).replace("Select ", "")
+            options_str = ", ".join(str(o) for o in options)
+            return (
+                False,
+                None,
+                f"'{value}' is not a valid choice for \"{field_label}\". "
+                f"Please pick one of: {options_str}.",
+            )
         return True, value, None
 
     # ── Number ──
@@ -36,16 +43,25 @@ def validate_field(
         try:
             num = int(str(value).strip())
         except (ValueError, TypeError):
-            return False, None, f"{field} must be a number."
+            field_label = meta.get("prompt", field).replace("Enter ", "")
+            return False, None, f"Please enter a valid number for \"{field_label}\"."
 
         rules = meta.get("validator") or {}
         min_v = rules.get("min")
         max_v = rules.get("max")
 
         if min_v is not None and num < min_v:
-            return False, None, f"{field} must be at least {min_v}. You entered {num}."
+            field_label = meta.get("prompt", field).replace("Enter ", "")
+            return (
+                False, None,
+                f"{num} is too small for \"{field_label}\". Minimum allowed is {min_v} GB.",
+            )
         if max_v is not None and num > max_v:
-            return False, None, f"{field} must be at most {max_v}. You entered {num}."
+            field_label = meta.get("prompt", field).replace("Enter ", "")
+            return (
+                False, None,
+                f"{num} is too large for \"{field_label}\". Maximum allowed is {max_v} GB.",
+            )
 
         return True, num, None
 

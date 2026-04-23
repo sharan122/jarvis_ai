@@ -1,0 +1,168 @@
+{
+  "service_id": "aws_rds",
+  "service_name": "AWS RDS Database Instance",
+  "version": "2026-04-23",
+  "field_order": [
+    "application_name",
+    "app_id",
+    "account_id",
+    "environment",
+    "region",
+    "availability_zone",
+    "db_engine",
+    "db_engine_version",
+    "db_instance_class",
+    "multi_az",
+    "storage_type",
+    "allocated_storage_gb"
+  ],
+  "fields": {
+    "application_name": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "application_names",
+      "depends_on": null,
+      "prompt": "Select application name",
+      "help": "The application this RDS instance belongs to. Determines account and permissions.",
+      "validator": null
+    },
+    "app_id": {
+      "type": "text",
+      "required": true,
+      "readonly": true,
+      "source": "user_enrichment",
+      "options_key": null,
+      "depends_on": null,
+      "prompt": "App ID (auto-filled)",
+      "help": "Application ID from the enterprise app registry. Auto-filled based on application name.",
+      "validator": null
+    },
+    "account_id": {
+      "type": "text",
+      "required": true,
+      "readonly": true,
+      "source": "user_enrichment",
+      "options_key": null,
+      "depends_on": null,
+      "prompt": "Account ID (auto-filled)",
+      "help": "AWS account number. Auto-filled from application/environment mapping.",
+      "validator": null
+    },
+    "environment": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "environments",
+      "depends_on": null,
+      "prompt": "Select environment",
+      "help": "Target deployment environment. DEV for development, QA for testing, PROD for production.",
+      "validator": null
+    },
+    "region": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "regions",
+      "depends_on": null,
+      "prompt": "Select AWS region",
+      "help": "Geographic AWS location where the RDS instance will be deployed. Affects latency and compliance.",
+      "validator": null
+    },
+    "availability_zone": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "availability_zones_by_region",
+      "depends_on": "region",
+      "prompt": "Select availability zone",
+      "help": "A sub-location within the selected region for the primary DB instance. Options depend on the selected region.",
+      "validator": null
+    },
+    "db_engine": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "db_engines",
+      "depends_on": null,
+      "prompt": "Select database engine",
+      "help": "The database engine to run. Supported: mysql, postgres, mariadb, oracle-se2, sqlserver-se.",
+      "validator": null
+    },
+    "db_engine_version": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "db_engine_versions_by_engine",
+      "depends_on": "db_engine",
+      "prompt": "Select database engine version",
+      "help": "Specific version of the selected database engine. Options depend on the selected engine.",
+      "validator": null
+    },
+    "db_instance_class": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "db_instance_classes",
+      "depends_on": null,
+      "prompt": "Select DB instance class",
+      "help": "Defines CPU and memory for the database instance. db.t3 is burstable, db.m5 is general purpose, db.r5 is memory optimized.",
+      "validator": null
+    },
+    "multi_az": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "multi_az_options",
+      "depends_on": null,
+      "prompt": "Enable Multi-AZ deployment?",
+      "help": "Multi-AZ creates a standby replica in a different AZ for automatic failover. Recommended for PROD environments.",
+      "validator": null
+    },
+    "storage_type": {
+      "type": "select",
+      "required": true,
+      "readonly": false,
+      "source": "redis",
+      "options_key": "storage_types",
+      "depends_on": null,
+      "prompt": "Select storage type",
+      "help": "gp3 is the recommended general-purpose SSD. io1 is provisioned IOPS for high-performance workloads. standard is magnetic (legacy).",
+      "validator": null
+    },
+    "allocated_storage_gb": {
+      "type": "number",
+      "required": true,
+      "readonly": false,
+      "source": "user_input",
+      "options_key": null,
+      "depends_on": null,
+      "prompt": "Enter allocated storage in GB",
+      "help": "Size of the database storage. Minimum 20 GB, maximum 65536 GB.",
+      "validator": {
+        "min": 20,
+        "max": 65536
+      }
+    }
+  },
+  "user_enrichment": {
+    "application_name": "KAW-ACC-00N-TSX-JARQA",
+    "app_id": "APP000300003369",
+    "account_id": "050752608746"
+  },
+  "default_json": {
+    "service_id": "aws_rds",
+    "resource_type": "rds",
+    "owner": "jarvis-ai",
+    "request_source": "agent_2",
+    "provisioning_tool": "terraform"
+  }
+}
