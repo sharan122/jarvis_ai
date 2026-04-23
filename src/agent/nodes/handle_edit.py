@@ -1,4 +1,4 @@
-"""handle_edit node — change a previously filled field value."""
+"""handle_edit node — change a previously filled field value with full dependency awareness."""
 
 from __future__ import annotations
 
@@ -6,11 +6,15 @@ from agent.interpreter.fast_path import try_fast_path
 from agent.interpreter.llm_classify import llm_classify_input
 from agent.state import Agent2State
 from agent.tools.options import get_options_for_field
-from agent.validation.dependency import cascade_invalidate
+from agent.validation.dependency import cascade_invalidate, reset_children
+from agent.validation.dependency_map import get_children, get_parent
 from agent.validation.field_validator import validate_field
 
 
-def _recompute(field_order, field_config, values):
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _recompute(field_order: list, field_config: dict, values: dict) -> tuple[list, list]:
+    """Derive completed and missing required-field lists from current values."""
     completed = [
         f for f in field_order
         if field_config.get(f, {}).get("required")
@@ -24,87 +28,173 @@ def _recompute(field_order, field_config, values):
     return completed, missing
 
 
+def _is_parent_field(service_id: str, field: str) -> bool:
+    """Return True if *field* has at least one child dependent in the dependency map."""
+    return bool(get_children(service_id, field))
+
+
+def _normalise_value(
+    new_value: str,
+    target_field: str,
+    field_meta: dict,
+    options: list[str],
+    completed: list[str],
+    state: Agent2State,
+) -> tuple[str | None, str | None]:
+    """
+    Run new_value through fast-path then LLM classification to normalise it.
+
+    Returns (normalised_value, error_message).  Exactly one will be non-None.
+    """
+    # Fast path — no LLM tokens
+    fast_result = try_fast_path(new_value, target_field, field_meta, options, completed)
+    if fast_result is not None and fast_result.get("action") == "answer":
+        return fast_result["value"], None
+
+    # Slow path — LLM classification.
+    # Exclude the field being edited from completed_fields so the LLM treats
+    # the input as a fresh "answer" rather than another "edit" intent.
+    llm_completed = [f for f in completed if f != target_field]
+    llm_result = llm_classify_input(
+        raw_input=new_value,
+        current_field=target_field,
+        field_meta=field_meta,
+        options=options,
+        completed_fields=llm_completed,
+        values=state.get("values", {}),
+        session_id=state.get("session_id"),
+        service_id=state.get("service_id", "aws_ec2"),
+    )
+    if llm_result.get("action") == "answer":
+        return llm_result["value"], None
+
+    msg = llm_result.get(
+        "message",
+        f"Could not understand '{new_value}' for field '{target_field}'.",
+    )
+    if options:
+        msg += f" Valid options: {options}"
+    return None, msg
+
+
+# ── Node ─────────────────────────────────────────────────────────────────────
+
 def handle_edit(state: Agent2State) -> dict:
+    """
+    Edit handler node — validates intent, enforces dependency rules, and
+    updates state while keeping field relationships consistent.
+    """
     action = state.get("interpreted_action") or {}
     target_field = action.get("field")
     new_value = action.get("value")
 
-    completed = state.get("completed_fields", [])
-    field_config = state.get("field_config", {})
+    completed: list[str] = state.get("completed_fields", [])
+    field_config: dict = state.get("field_config", {})
+    service_id: str = state.get("service_id", "aws_ec2")
+    values: dict = state.get("values", {})
 
-    # Guard: can only edit completed fields
+    # ── Guard 1: field must have been filled already ──────────────────────────
     if target_field not in completed:
         return {
-            "error": f"Cannot edit '{target_field}' — it has not been filled yet.",
+            "error": (
+                f"❌ Cannot edit '{target_field}' — it has not been filled yet. "
+                f"Please complete it in the normal flow first."
+            ),
             "mode": "collect",
-            "messages": [f"Edit rejected: {target_field} not in completed"],
+            "messages": [f"Edit rejected: '{target_field}' not in completed fields"],
         }
 
-    # Guard: readonly fields
+    # ── Guard 2: readonly (auto-filled) fields cannot be changed ─────────────
     meta = field_config.get(target_field, {})
     if meta.get("readonly"):
         return {
-            "error": f"'{target_field}' is auto-filled and cannot be changed.",
+            "error": f"❌ '{target_field}' is auto-filled and cannot be changed.",
             "mode": "collect",
-            "messages": [f"Edit rejected: {target_field} is readonly"],
+            "messages": [f"Edit rejected: '{target_field}' is readonly"],
         }
 
-    # If a new value was provided, run it through the same
-    # fast-path + LLM classification pipeline used by the resume flow
-    # so informal inputs are normalised
-    # before validation.
+    # ── Guard 3: child-field cross-dependency check ───────────────────────────
+    # If the user is trying to set a child field to a value that is invalid
+    # for the currently selected parent, reject it immediately with clear options.
+    parent_field = get_parent(target_field, field_config)
+    if parent_field and new_value is not None:
+        parent_value = values.get(parent_field)
+        if parent_value is None:
+            return {
+                "error": (
+                    f"❌ Cannot set '{target_field}' — its parent field "
+                    f"'{parent_field}' has not been selected yet."
+                ),
+                "mode": "collect",
+                "messages": [f"Edit rejected: parent '{parent_field}' not set"],
+            }
+
+        # Fetch valid options for the child given the current parent value
+        valid_child_options = get_options_for_field(
+            service_id, target_field, field_config, values
+        )
+        # Check the raw new_value against valid options (case-insensitive)
+        raw_lower = new_value.strip().lower()
+        matched = next(
+            (o for o in valid_child_options if o.lower() == raw_lower), None
+        )
+        if valid_child_options and matched is None:
+            return {
+                "error": (
+                    f"❌ '{new_value}' is not a valid {target_field} for "
+                    f"{parent_field} '{parent_value}'. "
+                    f"Valid options: {valid_child_options}"
+                ),
+                "mode": "collect",
+                "messages": [
+                    f"Edit rejected: '{new_value}' invalid for "
+                    f"{parent_field}='{parent_value}'"
+                ],
+            }
+
+    # ── Value provided — normalise → validate → apply ─────────────────────────
     if new_value is not None:
         field_meta = field_config.get(target_field, {})
-        options = get_options_for_field(
-            state["service_id"], target_field, field_config, state["values"]
+        options = get_options_for_field(service_id, target_field, field_config, values)
+
+        normalised, err = _normalise_value(
+            new_value, target_field, field_meta, options, completed, state
         )
-        completed = state.get("completed_fields", [])
-
-        # Fast path first (no LLM tokens)
-        fast_result = try_fast_path(new_value, target_field, field_meta, options, completed)
-        if fast_result is not None and fast_result.get("action") == "answer":
-            normalised_value = fast_result["value"]
-        else:
-            # Exclude the field being edited from completed_fields so the LLM
-            # treats the input as a fresh "answer" — not an "edit" of an
-            # already-completed field (which would return action="edit",
-            # breaking the normalisation check below).
-            llm_completed = [f for f in completed if f != target_field]
-
-            # Slow path — LLM classification
-            llm_result = llm_classify_input(
-                raw_input=new_value,
-                current_field=target_field,
-                field_meta=field_meta,
-                options=options,
-                completed_fields=llm_completed,
-                values=state.get("values", {}),
-                session_id=state.get("session_id"),
-                service_id=state.get("service_id", "aws_ec2"),
-            )
-            if llm_result.get("action") == "answer":
-                normalised_value = llm_result["value"]
-            else:
-                # LLM couldn't interpret the value — surface the error
-                msg = llm_result.get("message", f"Could not understand value '{new_value}' for field '{target_field}'.")
-                if options:
-                    msg += f" Valid options: {options}"
-                return {"error": msg, "mode": "collect"}
-
-        ok, parsed, err = validate_field(
-            service_id=state["service_id"],
-            field=target_field,
-            value=normalised_value,
-            field_config=field_config,
-            values=state["values"],
-        )
-        if not ok:
+        if err:
             return {"error": err, "mode": "collect"}
 
-        updated_values = {**state["values"], target_field: parsed}
-        updated_values, invalidated = cascade_invalidate(
-            state["service_id"], target_field, updated_values, field_config
+        ok, parsed, validation_err = validate_field(
+            service_id=service_id,
+            field=target_field,
+            value=normalised,
+            field_config=field_config,
+            values=values,
         )
+        if not ok:
+            return {"error": validation_err, "mode": "collect"}
+
+        updated_values = {**values, target_field: parsed}
+
+        # ── Dependency cascade ────────────────────────────────────────────────
+        # Parent field edited → unconditionally reset all children so the user
+        # is prompted to re-enter them with the new parent context.
+        # Independent / child field → use conditional cascade_invalidate (no-op
+        # when the field has no children of its own).
+        if _is_parent_field(service_id, target_field):
+            updated_values, invalidated = reset_children(
+                service_id, target_field, updated_values, field_config
+            )
+            success_msg = (
+                f"✅ '{target_field}' updated to '{parsed}'. "
+                f"Dependent fields reset and must be re-entered: {invalidated}"
+                if invalidated
+                else f"✅ '{target_field}' updated to '{parsed}'."
+            )
+        else:
+            updated_values, invalidated = cascade_invalidate(
+                service_id, target_field, updated_values, field_config
+            )
+            success_msg = f"✅ '{target_field}' updated to '{parsed}'."
 
         comp, miss = _recompute(state["field_order"], field_config, updated_values)
 
@@ -116,12 +206,18 @@ def handle_edit(state: Agent2State) -> dict:
             "invalidated_fields": invalidated,
             "error": None,
             "mode": "collect",
-            "messages": [f"Edited {target_field}={parsed}. Invalidated: {invalidated}"],
+            "messages": [
+                f"Edited {target_field}={parsed}. "
+                f"Reset: {invalidated}. "
+                f"Missing after edit: {miss}"
+            ],
+            # Surface to frontend via next ask_field payload
+            "_edit_success_message": success_msg,
         }
 
-    # No value provided — re-ask the field
+    # ── No value provided — re-ask the field interactively ───────────────────
     return {
         "current_field": target_field,
         "mode": "collect",
-        "messages": [f"Edit mode: will re-ask {target_field}"],
+        "messages": [f"Edit mode: will re-ask '{target_field}'"],
     }

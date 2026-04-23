@@ -1,10 +1,11 @@
-"""Field dependency management — cascade invalidation."""
+"""Field dependency management — cascade invalidation and child resets."""
 
 from __future__ import annotations
 
 from typing import Any
 
 from agent.tools.options import get_options_for_field
+from agent.validation.dependency_map import get_children
 
 
 def cascade_invalidate(
@@ -45,3 +46,25 @@ def cascade_invalidate(
             invalidated.extend(deeper)
 
     return updated, invalidated
+
+
+def reset_children(
+    service_id: str,
+    changed_field: str,
+    values: dict[str, Any],
+    field_config: dict[str, dict],
+) -> tuple[dict[str, Any], list[str]]:
+
+    updated = dict(values)
+    reset: list[str] = []
+
+    for child in get_children(service_id, changed_field):
+        if child in updated and updated[child] is not None:
+            updated[child] = None
+            reset.append(child)
+
+            # Recurse: if that child itself has dependents, reset them too
+            updated, deeper = reset_children(service_id, child, updated, field_config)
+            reset.extend(deeper)
+
+    return updated, reset
