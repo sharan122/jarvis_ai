@@ -76,6 +76,10 @@ HINTS: dict[str, dict[str, str]] = {
         "mysql":          "mysql",
         "my sql":         "mysql",
         "mysql db":       "mysql",
+        "MySQL":          "mysql",
+        "My SQL":         "mysql",
+        "MySQL DB":       "mysql",
+        "msql":          "mysql",
         # PostgreSQL
         "postgres":       "postgres",
         "postgresql":     "postgres",
@@ -106,6 +110,7 @@ HINTS: dict[str, dict[str, str]] = {
         "8":     "8.0.36",
         "5.7":   "5.7.44",
         "latest mysql": "8.0.36",
+        "older mysql": "5.7.44",
         # PostgreSQL
         "16":    "16.2",
         "15":    "15.6",
@@ -113,15 +118,21 @@ HINTS: dict[str, dict[str, str]] = {
         "13":    "13.14",
         "latest postgres": "16.2",
         "latest postgresql": "16.2",
+        "older postgres": "13.14",
         # MariaDB
         "10.11": "10.11.7",
         "10.6":  "10.6.17",
         "10.5":  "10.5.23",
         "latest mariadb": "10.11.7",
+        "older mariadb": "10.6.17",
     },
 
     "db_instance_class": {
-        # t3 family (burstable)
+
+        "maximum":      "db.r5.xlarge",
+        "minimum":      "db.t3.micro",
+        "max":          "db.r5.xlarge",
+        "min":          "db.t3.micro",
         "t3 micro":     "db.t3.micro",
         "t3micro":      "db.t3.micro",
         "micro":        "db.t3.micro",
