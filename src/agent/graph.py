@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph
 
 from agent.nodes.ask_field import ask_field
 from agent.nodes.bootstrap import bootstrap
+from agent.nodes.confirm_preview import confirm_preview
 from agent.nodes.finalize import finalize
 from agent.nodes.handle_edit import handle_edit
 from agent.nodes.handle_help import handle_help
@@ -61,6 +62,7 @@ def build_graph(checkpointer=None):
     builder.add_node("handle_edit",        handle_edit)
     builder.add_node("handle_preview",     handle_preview)
     builder.add_node("post_action",        post_action)
+    builder.add_node("confirm_preview",    confirm_preview)
     builder.add_node("finalize",           finalize)
 
     # ── Edges ──
@@ -90,8 +92,9 @@ def build_graph(checkpointer=None):
     builder.add_edge("handle_edit",        "post_action")
     builder.add_edge("handle_preview",     "post_action")
 
-    # post_action uses Command to route to ask_field or finalize
-    # finalize -> END
+    # post_action uses Command to route to ask_field or confirm_preview.
+    # confirm_preview uses Command to route to finalize | handle_edit | ask_field | END.
+    # finalize → END
     builder.add_edge("finalize", END)
 
     # ── Compile ──
