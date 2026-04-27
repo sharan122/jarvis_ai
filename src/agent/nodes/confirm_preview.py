@@ -43,8 +43,7 @@ def _build_preview_payload(state: Agent2State) -> dict:
         "status": "preview_ready",
         "message": (
             "All required fields have been filled. "
-            "Please review and confirm to submit, "
-            "or say 'change <field> to <value>' to make edits."
+            "Please review and confirm to submit"
         ),
         # Matches handle_preview's payload structure exactly
         "service": state.get("service_id"),

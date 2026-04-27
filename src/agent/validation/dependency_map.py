@@ -14,6 +14,21 @@ DEPENDENCY_MAP: dict[str, dict[str, list[str]]] = {
         "availability_zone": [],
         "image": [],
     },
+    "aws_rds": {
+        # region resets all zone/engine-independent fields that are region-scoped
+        "region":            ["availability_zone", "db_instance_class", "multi_az", "storage_type", "allocated_storage_gb"],
+        # db_engine resets version and everything that depends on engine choice
+        "db_engine":         ["db_engine_version", "db_instance_class", "storage_type", "allocated_storage_gb"],
+        # db_engine_version constrains which instance classes are valid
+        "db_engine_version": ["db_instance_class"],
+        # storage_type determines valid allocated_storage ranges
+        "storage_type":      ["allocated_storage_gb"],
+        # leaf nodes — no children
+        "availability_zone":    [],
+        "db_instance_class":    [],
+        "multi_az":             [],
+        "allocated_storage_gb": [],
+    },
 }
 
 

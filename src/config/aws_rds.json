@@ -122,7 +122,7 @@
       "readonly": false,
       "source": "redis",
       "options_key": "multi_az_options",
-      "depends_on": null,
+      "depends_on": "region",
       "prompt": "Enable Multi-AZ deployment?",
       "help": "Multi-AZ creates a standby replica in a different AZ for automatic failover. Recommended for PROD environments.",
       "validator": null
@@ -133,7 +133,7 @@
       "readonly": false,
       "source": "redis",
       "options_key": "storage_types",
-      "depends_on": null,
+      "depends_on": "db_engine",
       "prompt": "Select storage type",
       "help": "gp3 is the recommended general-purpose SSD. io1 is provisioned IOPS for high-performance workloads. standard is magnetic (legacy).",
       "validator": null
@@ -144,7 +144,7 @@
       "readonly": false,
       "source": "user_input",
       "options_key": null,
-      "depends_on": null,
+      "depends_on": "storage_type",
       "prompt": "Enter allocated storage in GB",
       "help": "Size of the database storage. Minimum 20 GB, maximum 65536 GB.",
       "validator": {

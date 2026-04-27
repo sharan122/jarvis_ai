@@ -84,6 +84,7 @@ def _validate_llm_output(
     output: dict,
     options: list[str],
     completed_fields: list[str],
+    current_field: str = "",
 ) -> dict:
     """Reject structurally invalid LLM responses and normalise edge cases."""
     action = output.get("action")
@@ -98,6 +99,10 @@ def _validate_llm_output(
     if action == "edit":
         field = output.get("field")
         if field not in completed_fields:
+            # Special case: user said "change <current_field> to <value>" while
+            # being asked for that field — reinterpret as an answer, not an edit.
+            if field == current_field and output.get("value") is not None:
+                return {"action": "answer", "value": output["value"]}
             return {
                 "action": "unclear",
                 "message": f"Cannot edit '{field}' — not yet completed.",
@@ -258,7 +263,7 @@ def llm_classify_input(
             text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
 
         parsed = json.loads(text)
-        return _validate_llm_output(parsed, options, completed_fields)
+        return _validate_llm_output(parsed, options, completed_fields, current_field)
 
     except Exception as exc:
         return {

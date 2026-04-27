@@ -215,9 +215,24 @@ def handle_edit(state: Agent2State) -> dict:
             "_edit_success_message": success_msg,
         }
 
-    # ── No value provided — re-ask the field interactively ───────────────────
+    # ── No value provided — null the field so post_action routes to it ───────
+    # Setting only current_field is not enough: post_action reads missing_fields
+    # and uses missing[0] as current_field, overriding whatever we set here.
+    # Nulling the target field ensures _recompute places it first in missing
+    # (it was the earliest completed field in field_order, so it becomes the
+    # earliest missing), and post_action will correctly route ask_field to it.
+    updated_values = {**values, target_field: None}
+    updated_sources = {k: v for k, v in state.get("field_sources", {}).items()
+                       if k != target_field}
+    comp, miss = _recompute(state["field_order"], field_config, updated_values)
+
     return {
+        "values": updated_values,
+        "field_sources": updated_sources,
+        "completed_fields": comp,
+        "missing_fields": miss,
         "current_field": target_field,
         "mode": "collect",
-        "messages": [f"Edit mode: will re-ask '{target_field}'"],
+        "error": None,
+        "messages": [f"Edit mode: re-asking '{target_field}'"],
     }
