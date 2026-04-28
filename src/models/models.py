@@ -21,7 +21,8 @@ class ResumeRequest(BaseModel):
 
 class SessionResponse(BaseModel):
     session_id: str
-    status: str                     # "collecting" | "done" | "cancelled"
+    status: str                              # "collecting" | "done" | "cancelled"
     payload: dict[str, Any] | None = None
+    preview: dict[str, Any] | None = None   # populated when user requests preview
     final_json: dict[str, Any] | None = None
     agent_json: dict[str, Any] | None = None

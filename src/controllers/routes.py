@@ -37,6 +37,17 @@ def _extract_interrupt(result: dict) -> dict | None:
     return first.value if hasattr(first, "value") else first
 
 
+def _collecting_response(session_id: str, payload: dict) -> SessionResponse:
+
+    preview = payload.pop("preview", None)
+    return SessionResponse(
+        session_id=session_id,
+        status="collecting",
+        payload=payload if not preview else None,
+        preview=preview,
+    )
+
+
 def _make_config(thread_id: str, handler=None) -> dict:
     """Build a LangGraph invoke config, optionally attaching the Langfuse callback."""
     config: dict = {"configurable": {"thread_id": thread_id}}
@@ -147,11 +158,7 @@ def _handle_post_completion_edit(req: ResumeRequest, app) -> SessionResponse:
 
     payload = _extract_interrupt(result)
     if payload:
-        return SessionResponse(
-            session_id=req.session_id,
-            status="collecting",
-            payload=payload,
-        )
+        return _collecting_response(req.session_id, payload)
 
     mode = result.get("mode", "")
     if mode == "done":
@@ -195,11 +202,7 @@ def start_session(req: StartRequest):
     payload = _extract_interrupt(result)
 
     if payload:
-        return SessionResponse(
-            session_id=thread_id,
-            status="collecting",
-            payload=payload,
-        )
+        return _collecting_response(thread_id, payload)
 
     # All fields were pre-filled — already finalized
     flush_handler(thread_id)
@@ -242,11 +245,7 @@ def resume_session(req: ResumeRequest):
     payload = _extract_interrupt(result)
 
     if payload:
-        return SessionResponse(
-            session_id=req.session_id,
-            status="collecting",
-            payload=payload, 
-        )
+        return _collecting_response(req.session_id, payload)
 
     mode = result.get("mode", "")
     if mode == "done":

@@ -154,6 +154,18 @@ def handle_edit(state: Agent2State) -> dict:
 
     # ── Value provided — normalise → validate → apply ─────────────────────────
     if new_value is not None:
+        # Guard 4: reject if submitted value is identical to the current saved value.
+        current = values.get(target_field)
+        if current is not None and str(new_value).strip().lower() == str(current).strip().lower():
+            return {
+                "error": (
+                    f"'{target_field}' is already set to '{current}'. "
+                    "Please provide a different value to update it."
+                ),
+                "mode": "collect",
+                "messages": [f"Same-value rejected: {target_field}='{current}' unchanged."],
+            }
+
         field_meta = field_config.get(target_field, {})
         options = get_options_for_field(service_id, target_field, field_config, values)
 
